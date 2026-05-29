@@ -32,7 +32,11 @@ BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="MoneyBuster -> Firefly III", version=__version__)
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+# Mount static files only if the directory exists, so a fresh checkout without
+# any static assets does not crash at startup.
+_static_dir = BASE_DIR / "static"
+if _static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 history = ImportHistory(settings.history_db_path)
 
@@ -207,6 +211,15 @@ async def do_import(request: Request):
         return _error(request, str(exc), status=400)
 
     opts = _map_options(self_name, asset_account, mode)
+    if not opts.asset_account:
+        return _error(
+            request,
+            "Kein Asset-Konto angegeben. Die Quelle einer Firefly-Ausgabe muss "
+            "ein Asset-Konto sein (z. B. dein Girokonto) – bitte oben ein Konto "
+            "wählen. Es wurde nichts importiert.",
+            status=400,
+        )
+
     try:
         proposals, _result = _build(content, filename, export_type, opts)
     except ParseError as exc:

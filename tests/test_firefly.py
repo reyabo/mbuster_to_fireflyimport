@@ -66,6 +66,24 @@ async def test_test_connection_unauthorised(patch_transport):
 
 
 @pytest.mark.anyio
+async def test_ensure_expense_account_ignores_only_real_already_exists(patch_transport):
+    patch_transport(lambda r: httpx.Response(
+        422, json={"message": "Validation failed",
+                   "errors": {"name": ["The name has already been taken."]}}))
+    # genuine duplicate -> no error
+    await FireflyClient("https://ff.test", "t").ensure_expense_account("REWE")
+
+
+@pytest.mark.anyio
+async def test_ensure_expense_account_raises_on_other_422(patch_transport):
+    patch_transport(lambda r: httpx.Response(
+        422, json={"message": "Validation failed",
+                   "errors": {"type": ["The selected type is invalid."]}}))
+    with pytest.raises(FireflyError):
+        await FireflyClient("https://ff.test", "t").ensure_expense_account("X")
+
+
+@pytest.mark.anyio
 async def test_ensure_category_accepts_already_exists(patch_transport):
     patch_transport(lambda r: httpx.Response(
         422, json={"message": "Validation failed",
