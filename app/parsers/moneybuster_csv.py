@@ -12,12 +12,13 @@ import csv
 import io
 import re
 
-from ..models import Bill, Participant
+from ..models import Bill, Participant, ParseResult
 from .base import (
     BaseParser,
     ParseError,
     decode,
     equal_shares,
+    mask,
     normalise_date,
     parse_amount,
     split_names,
@@ -161,11 +162,16 @@ class MoneyBusterCsvParser(BaseParser):
         reader = csv.reader(io.StringIO("\n".join(bill_block)), delimiter=delimiter)
         header = next(reader)
         field_map = {i: _COLUMN_ALIASES.get(_normalise(h)) for i, h in enumerate(header)}
+        # Header -> canonical field (or "(ignoriert)") for the diagnostics.
+        mapping = {h: (field_map[i] or "(ignoriert)") for i, h in enumerate(header)}
 
         project = filename.rsplit("/", 1)[-1].rsplit(".", 1)[0] if filename else ""
 
         bills: list[Bill] = []
-        for row in reader:
+        warnings: list[str] = []
+        skipped = 0
+        # Data rows start on the line after the header within this block.
+        for offset, row in enumerate(reader, start=2):
             if not any(cell.strip() for cell in row):
                 continue
             values: dict[str, str] = {}
@@ -177,34 +183,64 @@ class MoneyBusterCsvParser(BaseParser):
                 if canon:
                     values[canon] = cell.strip()
 
-            amount_raw = values.get("amount", "")
-            if amount_raw == "":
-                continue
             title = values.get("what", "").strip()
+            ref = f"Zeile {offset} (what={mask(title)})"
+
             if title == _SENTINEL_TITLE:
+                skipped += 1
+                warnings.append(f"{ref}: Cospend-Platzhalter übersprungen.")
                 continue
 
+            amount_raw = values.get("amount", "")
+            if amount_raw == "":
+                skipped += 1
+                warnings.append(f"{ref}: kein Betrag – übersprungen.")
+                continue
+            total = parse_amount(amount_raw)
+            if total == 0 and amount_raw.strip() not in ("0", "0.0", "0,0", "0.00"):
+                warnings.append(f"{ref}: Betrag nicht interpretierbar, als 0 gewertet.")
+
             ts_raw = values.get("timestamp", "").strip()
-            timestamp = int(ts_raw) if ts_raw.isdigit() else None
+            timestamp = int(ts_raw) if ts_raw.lstrip("-").isdigit() else None
+
+            date_raw = values.get("date", "").strip()
+            date = normalise_date(date_raw, timestamp)
+            if not date_raw and timestamp is None:
+                warnings.append(f"{ref}: kein Datum – heutiges Datum verwendet.")
 
             category = values.get("category", "").strip() or None
             if not category:
                 cid = values.get("category_id", "").strip()
                 if cid and cid != "0":
                     category = category_lookup.get(cid)
+                    if category is None:
+                        warnings.append(
+                            f"{ref}: categoryid {cid} nicht im Lookup gefunden."
+                        )
 
-            total = parse_amount(amount_raw)
             owers = split_names(values.get("owers", ""))
+            if not owers:
+                warnings.append(f"{ref}: keine Teilnehmer (owers) – mein Anteil = 0.")
             shares = equal_shares(abs(total), owers)
             participants = [Participant(name=n, share=shares[n]) for n in owers]
+
+            payer = values.get("payer", "").strip()
+            if not payer:
+                warnings.append(f"{ref}: kein Zahler angegeben.")
+
+            # No explicit id column in this format: use the (unique, stable)
+            # timestamp as the bill key; fall back to a content hash otherwise.
+            bill_id = (values.get("bill_id") or "").strip() or None
+            if bill_id is None and timestamp is not None:
+                bill_id = str(timestamp)
 
             bills.append(
                 Bill(
                     project=project,
-                    bill_id=(values.get("bill_id") or "").strip() or None,
-                    date=normalise_date(values.get("date", ""), timestamp),
+                    bill_id=bill_id,
+                    date=date,
                     title=title,
-                    payer=values.get("payer", "").strip(),
+                    payer=payer,
                     amount_total=total,
                     currency=values.get("currency", "").strip() or "EUR",
                     participants=participants,
@@ -216,7 +252,14 @@ class MoneyBusterCsvParser(BaseParser):
 
         if not bills:
             raise ParseError("Der Rechnungs-Abschnitt enthielt keine verwertbaren Zeilen.")
-        return bills
+        return ParseResult(
+            bills=bills,
+            warnings=warnings,
+            field_mapping=mapping,
+            fmt="csv",
+            parser=self.name,
+            skipped=skipped,
+        )
 
     @staticmethod
     def _parse_category_lookup(block: list[str], delimiter: str) -> dict[str, str]:

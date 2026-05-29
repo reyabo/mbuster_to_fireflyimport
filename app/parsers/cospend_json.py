@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import json
 
-from ..models import Bill, Participant
+from ..models import Bill, Participant, ParseResult
 from .base import (
     BaseParser,
     ParseError,
     decode,
     equal_shares,
+    mask,
     normalise_date,
     parse_amount,
 )
@@ -50,7 +51,7 @@ class CospendJsonParser(BaseParser):
             return "bills" in data or "members" in data
         return False
 
-    def parse(self, content: bytes, filename: str = "") -> list[Bill]:
+    def parse(self, content: bytes, filename: str = "") -> ParseResult:
         try:
             data = json.loads(decode(content))
         except json.JSONDecodeError as exc:
@@ -79,9 +80,16 @@ class CospendJsonParser(BaseParser):
             raise ParseError("Keine Rechnungen ('bills') im JSON gefunden.")
 
         bills: list[Bill] = []
-        for b in bills_raw:
+        warnings: list[str] = []
+        for idx, b in enumerate(bills_raw, start=1):
+            title = str(b.get("what") or b.get("title") or "").strip()
+            ref = f"Bill #{idx} (what={mask(title)})"
             payer = self._resolve(b.get("payer_name") or b.get("payer"), b.get("payer_id"), members)
+            if not payer:
+                warnings.append(f"{ref}: Zahler nicht auflösbar.")
             ower_names = self._resolve_owers(b, members)
+            if not ower_names:
+                warnings.append(f"{ref}: keine Teilnehmer – mein Anteil = 0.")
 
             total = parse_amount(str(b.get("amount", "0")))
             shares = equal_shares(abs(total), ower_names)
@@ -92,6 +100,8 @@ class CospendJsonParser(BaseParser):
                 cid = b.get("categoryid", b.get("category_id"))
                 if cid not in (None, 0, "0"):
                     cat = categories.get(str(cid))
+                    if cat is None:
+                        warnings.append(f"{ref}: Kategorie-ID {cid} nicht auflösbar.")
 
             ts = b.get("timestamp")
             bills.append(
@@ -99,7 +109,7 @@ class CospendJsonParser(BaseParser):
                     project=project,
                     bill_id=str(b["id"]) if b.get("id") is not None else None,
                     date=normalise_date(str(b.get("date", "")), int(ts) if ts else None),
-                    title=str(b.get("what") or b.get("title") or "").strip(),
+                    title=title,
                     payer=payer,
                     amount_total=total,
                     currency=str(b.get("currency") or "EUR").strip() or "EUR",
@@ -109,7 +119,18 @@ class CospendJsonParser(BaseParser):
                     raw=b if isinstance(b, dict) else {},
                 )
             )
-        return bills
+        return ParseResult(
+            bills=bills,
+            warnings=warnings,
+            field_mapping={
+                "name": "project", "bills[].id": "bill_id", "bills[].what": "title",
+                "bills[].amount": "amount_total", "bills[].date/timestamp": "date",
+                "payer_id/payer_name": "payer", "owers/owerIds": "participants",
+                "categoryid": "category_hint",
+            },
+            fmt="json",
+            parser=self.name,
+        )
 
     @staticmethod
     def _resolve(name, ident, members: dict[str, str]) -> str:

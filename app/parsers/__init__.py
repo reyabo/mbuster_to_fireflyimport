@@ -6,7 +6,7 @@ the class here.
 
 from __future__ import annotations
 
-from ..models import Bill, ExportType
+from ..models import ExportType, ParseResult
 from .base import BaseParser, ParseError
 from .cospend_json import CospendJsonParser
 from .moneybuster_csv import MoneyBusterCsvParser
@@ -25,8 +25,9 @@ _BY_TYPE: dict[ExportType, list[type[BaseParser]]] = {
 
 def parse(
     content: bytes, filename: str = "", export_type: ExportType = ExportType.auto
-) -> list[Bill]:
-    """Parse ``content`` into bills, choosing a parser by type or sniffing."""
+) -> ParseResult:
+    """Parse ``content`` into a :class:`ParseResult`, choosing a parser by type
+    or by sniffing."""
 
     if export_type == ExportType.auto:
         for parser_cls in _PARSERS:

@@ -39,16 +39,31 @@ def test_equal_shares_sum_exactly():
 # --- CSV ------------------------------------------------------------------
 
 def test_real_cospend_csv_resolves_categories_and_skips_sentinel():
-    bills = parse(_bytes("bills_real_cospend.csv"), "Klassenfahrt.csv")
-    assert [b.title for b in bills] == ["Kaffee", "Pizza", "schokomuseun"]
+    res = parse(_bytes("bills_real_cospend.csv"), "Klassenfahrt.csv")
+    bills = res.bills
+    assert [b.title for b in bills] == ["Kaffee", "Pizza", "Museum"]
     assert bills[0].category_hint == "Gesundheit"      # id 75
     assert bills[2].category_hint == "Ausflug/Kultur"  # id 74
-    assert bills[0].payer == "Oli"
-    assert bills[0].participants[0].name == "Oli"
+    assert bills[0].payer == "M1"
+    assert bills[0].participants[0].name == "M1"
+    assert res.fmt == "csv"
+
+
+def test_real_csv_uses_timestamp_as_bill_id():
+    bills = parse(_bytes("bills_real_cospend.csv"), "K.csv").bills
+    # No 'id' column -> the unique timestamp is used as the stable key.
+    assert bills[0].bill_id == "1748847080"
+
+
+def test_sentinel_and_skips_recorded_as_warnings():
+    res = parse(_bytes("bills_real_cospend.csv"), "K.csv")
+    # The deleteMeIfYouWant placeholder is reported, not silently dropped.
+    assert res.skipped == 1
+    assert any("Platzhalter" in w for w in res.warnings)
 
 
 def test_german_csv_semicolon_and_comma_decimal():
-    bills = parse(_bytes("bills_de.csv"), "x.csv", ExportType.csv)
+    bills = parse(_bytes("bills_de.csv"), "x.csv", ExportType.csv).bills
     assert bills[0].title == "Hotel Tokio"
     assert bills[0].amount_total == Decimal("240.00")
     assert bills[0].date == "2024-03-01"
@@ -64,7 +79,9 @@ def test_statistics_export_raises():
 # --- JSON -----------------------------------------------------------------
 
 def test_cospend_json_resolves_members_and_categories():
-    bills = parse(_bytes("cospend.json"), "Urlaub.json", ExportType.auto)
+    res = parse(_bytes("cospend.json"), "Urlaub.json", ExportType.auto)
+    bills = res.bills
+    assert res.fmt == "json"
     assert len(bills) == 2
     b = bills[0]
     assert b.project == "Urlaub"
@@ -80,5 +97,22 @@ def test_cospend_json_resolves_members_and_categories():
 
 
 def test_auto_detect_picks_json_then_csv():
-    assert len(parse(_bytes("cospend.json"), "p.json")) == 2
-    assert len(parse(_bytes("bills_en.csv"), "p.csv")) == 4
+    assert len(parse(_bytes("cospend.json"), "p.json").bills) == 2
+    assert len(parse(_bytes("bills_en.csv"), "p.csv").bills) == 4
+
+
+def test_robust_semicolon_comma_decimal_empty_fields_and_warnings():
+    # Umlaute, ; delimiter, comma decimal, empty payer, dd.mm.yyyy, missing amount.
+    raw = (
+        "Was;Betrag;Datum;Zahlername;Schuldner\n"
+        '"Frühstück";"12,50";"01.03.2024";"";"Anna,Björn"\n'
+        '"Leerbetrag";"";"02.03.2024";"Anna";"Anna"\n'
+    ).encode("utf-8")
+    res = parse(raw, "projekt.csv", ExportType.csv)
+    assert len(res.bills) == 1                      # row without amount is skipped...
+    assert any("kein Betrag" in w for w in res.warnings)   # ...but reported
+    assert any("kein Zahler" in w for w in res.warnings)
+    b = res.bills[0]
+    assert b.amount_total == Decimal("12.50")
+    assert b.date == "2024-03-01"
+    assert [p.name for p in b.participants] == ["Anna", "Björn"]

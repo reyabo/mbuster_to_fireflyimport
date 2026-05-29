@@ -80,16 +80,16 @@ def _map_options(self_name: str, asset_account: str, mode: str) -> MapOptions:
 
 def _build(
     content: bytes, filename: str, export_type: str, opts: MapOptions
-) -> list[ImportProposal]:
-    bills = parse(content, filename, ExportType(export_type))
-    proposals = build_proposals(bills, opts, _rules())
+) -> tuple[list[ImportProposal], list[str]]:
+    result = parse(content, filename, ExportType(export_type))
+    proposals = build_proposals(result.bills, opts, _rules())
     known = history.known_ids([p.external_id for p in proposals])
     for p in proposals:
         if p.external_id in known:
             p.should_import = False
             p.status = ImportStatus.probably_imported
             p.status_message = "Bereits importiert (lokale Import-Historie)."
-    return proposals
+    return proposals, result.warnings
 
 
 # --- routes ---------------------------------------------------------------
@@ -151,7 +151,7 @@ async def preview(
     content = await file.read()
     opts = _map_options(self_name, asset_account, mode)
     try:
-        proposals = _build(content, file.filename or "", export_type, opts)
+        proposals, warnings = _build(content, file.filename or "", export_type, opts)
     except ParseError as exc:
         return _error(request, str(exc), status=400)
 
@@ -164,6 +164,7 @@ async def preview(
             "request": request,
             "version": __version__,
             "proposals": proposals,
+            "warnings": warnings,
             "count": len(proposals),
             "importable": importable,
             "token": token,
@@ -202,7 +203,7 @@ async def do_import(request: Request):
 
     opts = _map_options(self_name, asset_account, mode)
     try:
-        proposals = _build(content, filename, export_type, opts)
+        proposals, _warnings = _build(content, filename, export_type, opts)
     except ParseError as exc:
         return _error(request, str(exc), status=400)
 

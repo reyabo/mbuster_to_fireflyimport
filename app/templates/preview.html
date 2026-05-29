@@ -8,6 +8,15 @@
   </p>
   <p><a class="back" href="/">&larr; Neue Datei</a></p>
 
+  {% if warnings %}
+  <details class="alert warn" open>
+    <summary>{{ warnings|length }} Warnung(en) beim Parsen</summary>
+    <ul>
+      {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
   <form method="post" action="/import">
     <input type="hidden" name="token" value="{{ token }}">
     <input type="hidden" name="filename" value="{{ filename }}">

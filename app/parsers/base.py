@@ -7,31 +7,42 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from ..models import Bill
+from ..models import ParseResult
 
 
 class ParseError(ValueError):
-    """Raised when input cannot be parsed into bills."""
+    """Raised when input cannot be parsed into bills at all."""
 
 
 class BaseParser(ABC):
     """Base class for all export parsers.
 
-    A parser turns the raw bytes of an upload into a list of normalised
-    :class:`Bill` objects. New formats only need to implement :meth:`parse`
+    A parser turns the raw bytes of an upload into a :class:`ParseResult`
+    (bills + diagnostics). New formats only need to implement :meth:`parse`
     and :meth:`sniff`.
     """
 
     name: str = "base"
 
     @abstractmethod
-    def parse(self, content: bytes, filename: str = "") -> list[Bill]:
+    def parse(self, content: bytes, filename: str = "") -> ParseResult:
         ...
 
     @classmethod
     @abstractmethod
     def sniff(cls, content: bytes, filename: str = "") -> bool:
         """Return True if this parser can likely handle the content."""
+
+
+def mask(value: str | None) -> str:
+    """Anonymise a value for diagnostics/logs (first char + asterisks)."""
+
+    s = "" if value is None else str(value).strip()
+    if s == "":
+        return "<leer>"
+    if len(s) == 1:
+        return s + "*"
+    return s[0] + "*" * (len(s) - 1)
 
 
 # --- shared helpers -------------------------------------------------------

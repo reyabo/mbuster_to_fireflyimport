@@ -101,3 +101,18 @@ class ImportOutcome(BaseModel):
     status: str  # created | skipped | duplicate | error
     detail: str = ""
     firefly_id: str | None = None
+
+
+class ParseResult(BaseModel):
+    """Result of parsing an export: the bills plus diagnostics.
+
+    Incomplete or malformed rows are never silently dropped; they are recorded
+    in ``warnings`` so the UI / CLI can surface them.
+    """
+
+    bills: list[Bill] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    field_mapping: dict[str, str] = Field(default_factory=dict)
+    fmt: str = ""        # "csv" | "json"
+    parser: str = ""     # parser name that produced the result
+    skipped: int = 0     # rows recognised but intentionally not imported (e.g. sentinel)
