@@ -1,0 +1,22 @@
+services:
+  mbuster2firefly:
+    build: .
+    image: mbuster-to-fireflyimport:latest
+    container_name: mbuster2firefly
+    restart: unless-stopped
+    # Bound to the Tailscale interface only by default. Replace 100.x.y.z with
+    # this host's Tailscale IP, or use "127.0.0.1:8080:8080" and put it behind
+    # `tailscale serve`. Do NOT publish on 0.0.0.0 to the public internet.
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8080:8080"
+    env_file:
+      - .env
+    environment:
+      # These can also live in .env; listed here for visibility.
+      FIREFLY_BASE_URL: ${FIREFLY_BASE_URL:-}
+      FIREFLY_TOKEN: ${FIREFLY_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz').read()==b'ok' else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
