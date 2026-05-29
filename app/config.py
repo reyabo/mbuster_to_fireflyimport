@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     self_name: str = ""
     default_currency: str = "EUR"
     import_tag: str = "moneybuster"
+    default_asset_account: str = ""
     default_expense_account: str = "MoneyBuster"
     default_category: str = "Sonstiges"
 

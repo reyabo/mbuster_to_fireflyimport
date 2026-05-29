@@ -77,14 +77,31 @@ class FireflyClient:
     async def ensure_category(self, name: str) -> None:
         await self._ensure("/api/v1/categories", {"name": name})
 
+    # Substrings that identify a genuine "already exists" validation error.
+    _EXISTS_HINTS = (
+        "already been taken",
+        "already exists",
+        "must be unique",
+        "duplicate",
+        "bereits vergeben",
+        "existiert bereits",
+    )
+
     async def _ensure(self, path: str, body: dict) -> None:
         async with self._client() as client:
             resp = await client.post(f"{self.base_url}{path}", json=body)
-        # 200/201 created; 422 typically means it already exists -> fine.
-        if resp.status_code not in (200, 201, 422):
-            raise FireflyError(
-                f"Anlegen via {path} fehlgeschlagen (HTTP {resp.status_code})."
-            )
+        if resp.status_code in (200, 201):
+            return
+        if resp.status_code == 422:
+            # Only accept 422 when it really is an "already exists" error;
+            # any other validation failure must surface.
+            detail = self._extract_error(resp)
+            if any(h in detail.lower() for h in self._EXISTS_HINTS):
+                return
+            raise FireflyError(f"Anlegen via {path} fehlgeschlagen: {detail}")
+        raise FireflyError(
+            f"Anlegen via {path} fehlgeschlagen (HTTP {resp.status_code})."
+        )
 
     async def create_transaction(
         self,

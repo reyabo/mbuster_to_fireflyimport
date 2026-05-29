@@ -70,9 +70,12 @@ def _read_upload(token: str) -> tuple[bytes, str]:
 
 
 def _map_options(self_name: str, asset_account: str, mode: str) -> MapOptions:
+    # The asset account is the user's own source/destination account. It must
+    # NEVER fall back to the expense account; use the configured default asset
+    # account (which may be empty -> surfaced as a warning in the preview).
     return MapOptions(
         self_name=self_name.strip() or settings.self_name,
-        asset_account=asset_account.strip() or settings.default_expense_account,
+        asset_account=asset_account.strip() or settings.default_asset_account,
         mode=ImportMode(mode),
         import_tag=settings.import_tag,
     )
@@ -80,7 +83,7 @@ def _map_options(self_name: str, asset_account: str, mode: str) -> MapOptions:
 
 def _build(
     content: bytes, filename: str, export_type: str, opts: MapOptions
-) -> tuple[list[ImportProposal], list[str]]:
+) -> tuple[list[ImportProposal], ParseResult]:
     result = parse(content, filename, ExportType(export_type))
     proposals = build_proposals(result.bills, opts, _rules())
     known = history.known_ids([p.external_id for p in proposals])
@@ -89,7 +92,7 @@ def _build(
             p.should_import = False
             p.status = ImportStatus.probably_imported
             p.status_message = "Bereits importiert (lokale Import-Historie)."
-    return proposals, result.warnings
+    return proposals, result
 
 
 # --- routes ---------------------------------------------------------------
@@ -151,7 +154,7 @@ async def preview(
     content = await file.read()
     opts = _map_options(self_name, asset_account, mode)
     try:
-        proposals, warnings = _build(content, file.filename or "", export_type, opts)
+        proposals, result = _build(content, file.filename or "", export_type, opts)
     except ParseError as exc:
         return _error(request, str(exc), status=400)
 
@@ -164,7 +167,9 @@ async def preview(
             "request": request,
             "version": __version__,
             "proposals": proposals,
-            "warnings": warnings,
+            "warnings": result.warnings,
+            "equal_shares_note": result.fmt == "csv",
+            "asset_missing": not opts.asset_account,
             "count": len(proposals),
             "importable": importable,
             "token": token,
@@ -203,7 +208,7 @@ async def do_import(request: Request):
 
     opts = _map_options(self_name, asset_account, mode)
     try:
-        proposals, _warnings = _build(content, filename, export_type, opts)
+        proposals, _result = _build(content, filename, export_type, opts)
     except ParseError as exc:
         return _error(request, str(exc), status=400)
 

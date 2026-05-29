@@ -8,6 +8,21 @@
   </p>
   <p><a class="back" href="/">&larr; Neue Datei</a></p>
 
+  {% if asset_missing %}
+  <div class="alert error">
+    Kein Asset-Konto gewählt. Quelle/Ziel der Transaktion ist leer &ndash;
+    bitte oben ein Firefly-Asset-Konto angeben (Import sonst nicht möglich).
+  </div>
+  {% endif %}
+
+  {% if equal_shares_note %}
+  <div class="alert">
+    Hinweis: Der CSV-Export enthält keine expliziten Teilnehmer-Anteile &ndash;
+    die Anteile (&bdquo;mein Anteil&ldquo;) werden daher <b>gleichmäßig</b> auf
+    alle Beteiligten verteilt.
+  </div>
+  {% endif %}
+
   {% if warnings %}
   <details class="alert warn" open>
     <summary>{{ warnings|length }} Warnung(en) beim Parsen</summary>

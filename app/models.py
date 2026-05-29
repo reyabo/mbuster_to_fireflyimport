@@ -33,6 +33,7 @@ class ImportStatus(str, Enum):
     probably_imported = "probably_imported"
     skipped = "skipped"
     other_payer = "other_payer"
+    negative_amount = "negative_amount"
     error = "error"
 
 

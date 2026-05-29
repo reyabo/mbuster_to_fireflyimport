@@ -188,6 +188,7 @@ Duplikaterkennung (`error_if_duplicate_hash`) sowie die `external_id`.
 | `DATA_DIR` | Datenverzeichnis (Uploads, History, Rules) | `./data` (`/data` im Container) |
 | `SELF_NAME` | eigener MoneyBuster/Cospend-Name | – |
 | `DEFAULT_CURRENCY` | Währung (ISO 4217) | `EUR` |
+| `DEFAULT_ASSET_ACCOUNT` | Standard-Asset-Konto (Quelle/Ziel), wenn keins gewählt | – |
 | `IMPORT_TAG` | Tag an jeder Transaktion | `moneybuster` |
 | `DEFAULT_EXPENSE_ACCOUNT` | Fallback-Gegenkonto | `MoneyBuster` |
 | `DEFAULT_CATEGORY` | Fallback-Kategorie | `Sonstiges` |
@@ -216,5 +217,7 @@ pytest
 * keine komplexe Schuldenverwaltung, keine perfekte Abbildung offener Forderungen
 * keine Bankdatenverarbeitung, kein Ersatz für den Firefly Data Importer bei Bank-CSV
 * Split = Gleichverteilung auf die Owers (gewichtete/individuelle Splits aus dem
-  einfachen CSV-Export werden nicht rekonstruiert)
+  einfachen CSV-Export werden nicht rekonstruiert; in der Preview ausgewiesen)
+* **negative Beträge** (Erstattungen/Umbuchungen) werden in der Preview als
+  `negative_amount` markiert und **nicht automatisch** importiert
 * keine öffentliche Bereitstellung

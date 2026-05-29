@@ -139,6 +139,19 @@ def build_proposal(bill: Bill, opts: MapOptions, rules: RuleSet) -> ImportPropos
             proposal.status = ImportStatus.skipped
             proposal.status_message = "Kein eigener Anteil an dieser Ausgabe."
 
+    # --- negative amounts --------------------------------------------------
+    # A negative MoneyBuster/Cospend amount usually means a reimbursement /
+    # money transfer between members. In v1 we do NOT guess a deposit; the row
+    # is flagged in the preview and not imported automatically.
+    if bill.amount_total < 0:
+        proposal.should_import = False
+        proposal.status = ImportStatus.negative_amount
+        proposal.status_message = (
+            f"Negativer Betrag ({bill.amount_total:.2f} {bill.currency}) – "
+            "vermutlich Erstattung/Umbuchung. Kein automatischer Import in v1, "
+            "bitte manuell in Firefly prüfen."
+        )
+
     # --- de-duplication ----------------------------------------------------
     if ext_id in opts.known_ids:
         proposal.should_import = False
