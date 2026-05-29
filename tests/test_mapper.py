@@ -89,6 +89,20 @@ def test_known_id_marks_probably_imported():
     assert p.status == ImportStatus.probably_imported
 
 
+def test_negative_amount_flagged_and_not_imported():
+    bill = _bill(total="-50.00")
+    p = build_proposal(bill, _opts(), RULES)
+    assert p.should_import is False
+    assert p.status == ImportStatus.negative_amount
+    assert "Negativer Betrag" in p.status_message
+
+
+def test_negative_amount_not_imported_even_in_my_share_mode():
+    p = build_proposal(_bill(total="-50.00"), _opts(mode=ImportMode.my_share), RULES)
+    assert p.should_import is False
+    assert p.status == ImportStatus.negative_amount
+
+
 def test_notes_contain_split_information():
     p = build_proposal(_bill(), _opts(), RULES)
     assert "Payer: Oliver" in p.notes
