@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoneyBuster &rarr; Firefly III</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      margin: 0; padding: 2rem 1rem; line-height: 1.5;
+      background: #f5f6f8; color: #1c2330;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #14171c; color: #e6e8ec; }
+      .card { background: #1e232b !important; box-shadow: none !important; }
+      input, select { background: #2a313b; color: #e6e8ec; border-color: #3a424e; }
+      th { background: #2a313b !important; }
+      code, .notes { background: #2a313b !important; }
+    }
+    .wrap { max-width: 960px; margin: 0 auto; }
+    .card {
+      background: #fff; border-radius: 12px; padding: 1.5rem 1.75rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1.25rem;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
+    .muted { color: #6b7280; font-size: .9rem; }
+    label { display: block; font-size: .85rem; font-weight: 600; margin: .75rem 0 .25rem; }
+    input[type=text], select {
+      width: 100%; padding: .5rem .6rem; border: 1px solid #d2d6dc;
+      border-radius: 8px; font-size: .95rem;
+    }
+    input[type=file] { width: 100%; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+    .row { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; }
+    .row label { margin: 0; font-weight: 400; }
+    .btns { margin-top: 1.25rem; display: flex; flex-wrap: wrap; gap: .6rem; }
+    button {
+      border: 0; border-radius: 8px; padding: .6rem 1.1rem; font-size: .95rem;
+      font-weight: 600; cursor: pointer;
+    }
+    .primary { background: #c9302c; color: #fff; }
+    .secondary { background: #4b5563; color: #fff; }
+    .ghost { background: #e5e7eb; color: #1c2330; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    th { background: #f3f4f6; position: sticky; top: 0; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+    .pill.withdrawal { background: #fde8e8; color: #9b1c1c; }
+    .pill.deposit { background: #def7ec; color: #03543f; }
+    .pill.created { background: #def7ec; color: #03543f; }
+    .pill.duplicate { background: #fef3c7; color: #92400e; }
+    .pill.error { background: #fde8e8; color: #9b1c1c; }
+    .alert { padding: .85rem 1rem; border-radius: 8px; margin-bottom: 1rem; }
+    .alert.error { background: #fde8e8; color: #9b1c1c; }
+    .alert.warn { background: #fef3c7; color: #92400e; }
+    .summary { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .summary div { background: #f3f4f6; border-radius: 8px; padding: .6rem 1rem; }
+    .summary b { font-size: 1.3rem; display: block; }
+    a.back { color: #c9302c; text-decoration: none; font-weight: 600; }
+    code { background: #f3f4f6; padding: .1rem .3rem; border-radius: 4px; }
+    footer { text-align: center; color: #9ca3af; font-size: .8rem; margin-top: 1rem; }
+    .scroll { max-height: 60vh; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    {% block content %}{% endblock %}
+    <footer>mbuster_to_fireflyimport v{{ version }}</footer>
+  </div>
+</body>
+</html>

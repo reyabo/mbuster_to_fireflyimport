@@ -1,0 +1,5 @@
+what,amount,date,payer_name,payer_weight,owers
+"Hotel Tokyo",240.00,2024-03-01,Jan,1,"Jan,Oli"
+"Shinkansen tickets",180.50,2024-03-02,Oli,1,"Jan,Oli"
+"Dinner ramen",36.80,2024-03-02,Jan,1,"Jan,Oli"
+"Refund deposit",-50.00,2024-03-05,Oli,1,"Jan,Oli"

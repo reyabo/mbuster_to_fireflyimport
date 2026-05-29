@@ -1,0 +1,14 @@
+[project]
+name = "mbuster-to-fireflyimport"
+version = "0.1.0"
+description = "Convert MoneyBuster / Cospend exports into Firefly III transactions"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { file = "LICENSE" }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.setuptools]
+packages = ["app"]

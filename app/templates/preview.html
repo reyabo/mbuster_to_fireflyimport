@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Vorschau</h1>
+  <p class="muted">{{ count }} Transaktion(en) erkannt. Es wurde noch nichts importiert.</p>
+  <p><a class="back" href="/">&larr; Zur&uuml;ck</a></p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Datum</th><th>Typ</th><th>Beschreibung</th>
+          <th class="num">Betrag</th><th>W&auml;hrung</th>
+          <th>Quelle</th><th>Ziel</th><th>Kategorie</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in transactions %}
+        <tr>
+          <td>{{ tx.date }}</td>
+          <td><span class="pill {{ tx.type }}">{{ tx.type }}</span></td>
+          <td>{{ tx.description }}</td>
+          <td class="num">{{ tx.amount }}</td>
+          <td>{{ tx.currency_code }}</td>
+          <td>{{ tx.source_name }}</td>
+          <td>{{ tx.destination_name }}</td>
+          <td>{{ tx.category_name or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

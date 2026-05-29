@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>MoneyBuster &rarr; Firefly III</h1>
+  <p class="muted">
+    Lade eine MoneyBuster-/Cospend-Projekt-CSV (die <b>Rechnungsliste</b>, nicht
+    die Statistik) hoch. Die Datei wird in Firefly-III-Transaktionen umgewandelt
+    &ndash; entweder als Vorschau, als Direkt-Upload per API oder als
+    importfertige CSV.
+  </p>
+
+  {% if not firefly_configured %}
+  <div class="alert warn">
+    Firefly III ist noch nicht konfiguriert (<code>FIREFLY_BASE_URL</code> /
+    <code>FIREFLY_TOKEN</code>). Vorschau und CSV-Download funktionieren
+    trotzdem; der Direkt-Upload ist erst nach der Konfiguration verf&uuml;gbar.
+  </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data">
+    <label for="file">MoneyBuster-/Cospend-Export (CSV)</label>
+    <input type="file" id="file" name="file" accept=".csv,text/csv" required>
+
+    <div class="grid">
+      <div>
+        <label for="asset_account">Asset-Konto (woher/wohin das Geld flie&szlig;t)</label>
+        <input type="text" id="asset_account" name="asset_account"
+               value="{{ settings.default_asset_account }}">
+      </div>
+      <div>
+        <label for="currency">W&auml;hrung (ISO 4217)</label>
+        <input type="text" id="currency" name="currency"
+               value="{{ settings.default_currency }}">
+      </div>
+      <div>
+        <label for="expense_account">Standard-Ausgabenkonto</label>
+        <input type="text" id="expense_account" name="expense_account"
+               value="{{ settings.default_expense_account }}">
+      </div>
+      <div>
+        <label for="revenue_account">Standard-Einnahmenkonto</label>
+        <input type="text" id="revenue_account" name="revenue_account"
+               value="{{ settings.default_revenue_account }}">
+      </div>
+      <div>
+        <label for="import_tag">Import-Tag</label>
+        <input type="text" id="import_tag" name="import_tag"
+               value="{{ settings.import_tag }}">
+      </div>
+    </div>
+
+    <div class="row">
+      <input type="checkbox" id="invert_sign" name="invert_sign" value="true">
+      <label for="invert_sign">Vorzeichen umkehren (positiv = Einnahme)</label>
+    </div>
+
+    <div class="btns">
+      <button class="secondary" type="submit" formaction="/preview">Vorschau</button>
+      <button class="primary" type="submit" formaction="/import"
+              {% if not firefly_configured %}disabled title="Firefly nicht konfiguriert"{% endif %}>
+        In Firefly III importieren
+      </button>
+      <button class="ghost" type="submit" formaction="/download/csv" formnovalidate>CSV herunterladen</button>
+      <button class="ghost" type="submit" formaction="/download/config" formnovalidate>config.json herunterladen</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
