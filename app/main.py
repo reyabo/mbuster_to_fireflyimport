@@ -1,79 +1,122 @@
 """FastAPI web application.
 
-Designed to run in a homelab behind Tailscale: it binds to all interfaces but
-expects the network layer (Tailscale ACLs) to handle access control, so it
-adds no authentication of its own. Do **not** expose it directly to the public
-internet.
+Intended to run in a homelab behind Tailscale + Caddy. It has no built-in
+authentication; network access control is delegated to Tailscale. Never expose
+it directly to the public internet.
+
+Flow: upload -> parse -> preview (dry run) -> explicit import to the Firefly
+III API. Uploads are written to ``<DATA_DIR>/uploads`` only and re-read for the
+import step (so the preview the user confirms is exactly what gets imported).
 """
 
 from __future__ import annotations
 
+import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import __version__
 from .config import settings
-from .csvexport import to_config, to_csv
 from .firefly import FireflyClient, FireflyError
-from .models import FireflyTransaction
-from .parser import ParseError, parse_export
-from .transform import TransformOptions, transform_bills
+from .firefly.mapper import MapOptions, build_proposals
+from .history import ImportHistory
+from .models import ExportType, ImportMode, ImportProposal, ImportStatus
+from .parsers import ParseError, parse
+from .rules import load_rules
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-app = FastAPI(title="MoneyBuster -> Firefly III importer", version=__version__)
+app = FastAPI(title="MoneyBuster -> Firefly III", version=__version__)
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+history = ImportHistory(settings.history_db_path)
 
 
-def _decode(raw: bytes) -> str:
-    for encoding in ("utf-8-sig", "utf-8", "latin-1"):
-        try:
-            return raw.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("utf-8", errors="replace")
+def _rules():
+    return load_rules(settings.rules_path)
 
 
-def _options_from_form(
-    asset_account: str,
-    expense_account: str,
-    revenue_account: str,
-    currency: str,
-    import_tag: str,
-    invert_sign: bool,
-) -> TransformOptions:
-    base = TransformOptions.from_settings(settings)
-    return TransformOptions(
-        asset_account=asset_account.strip() or base.asset_account,
-        expense_account=expense_account.strip() or base.expense_account,
-        revenue_account=revenue_account.strip() or base.revenue_account,
-        currency=currency.strip() or base.currency,
-        import_tag=import_tag.strip(),
-        invert_sign=invert_sign,
+async def _asset_accounts() -> tuple[list[str], str | None]:
+    """Best-effort asset account list for the dropdown; never raises."""
+
+    if not settings.firefly_configured:
+        return [], "Firefly III ist nicht konfiguriert."
+    try:
+        client = FireflyClient(settings.firefly_url, settings.token)
+        return await client.list_account_names("asset"), None
+    except (FireflyError, Exception) as exc:  # noqa: BLE001 - UI must stay up
+        return [], f"Firefly nicht erreichbar: {exc}"
+
+
+def _save_upload(content: bytes, filename: str) -> str:
+    token = secrets.token_hex(8)
+    suffix = Path(filename).suffix or ".dat"
+    (settings.uploads_path / f"{token}{suffix}").write_bytes(content)
+    return f"{token}{suffix}"
+
+
+def _read_upload(token: str) -> tuple[bytes, str]:
+    # token is a filename produced by _save_upload; guard against traversal.
+    name = Path(token).name
+    path = settings.uploads_path / name
+    if not path.is_file():
+        raise FileNotFoundError("Upload nicht gefunden (bitte erneut hochladen).")
+    return path.read_bytes(), name
+
+
+def _map_options(self_name: str, asset_account: str, mode: str) -> MapOptions:
+    return MapOptions(
+        self_name=self_name.strip() or settings.self_name,
+        asset_account=asset_account.strip() or settings.default_expense_account,
+        mode=ImportMode(mode),
+        import_tag=settings.import_tag,
     )
 
 
-async def _parse_and_transform(
-    file: UploadFile, opts: TransformOptions
-) -> list[FireflyTransaction]:
-    raw = await file.read()
-    text = _decode(raw)
-    bills = parse_export(text)
-    return transform_bills(bills, opts)
+def _build(
+    content: bytes, filename: str, export_type: str, opts: MapOptions
+) -> list[ImportProposal]:
+    bills = parse(content, filename, ExportType(export_type))
+    proposals = build_proposals(bills, opts, _rules())
+    known = history.known_ids([p.external_id for p in proposals])
+    for p in proposals:
+        if p.external_id in known:
+            p.should_import = False
+            p.status = ImportStatus.probably_imported
+            p.status_message = "Bereits importiert (lokale Import-Historie)."
+    return proposals
+
+
+# --- routes ---------------------------------------------------------------
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
+    accounts, ff_error = await _asset_accounts()
+    ff_info = None
+    if settings.firefly_configured and not ff_error:
+        try:
+            client = FireflyClient(settings.firefly_url, settings.token)
+            ff_info = await client.test_connection()
+        except FireflyError as exc:
+            ff_error = str(exc)
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "settings": settings,
-            "firefly_configured": settings.firefly_configured,
             "version": __version__,
+            "settings": settings,
+            "accounts": accounts,
+            "ff_error": ff_error,
+            "ff_info": ff_info,
+            "modes": list(ImportMode),
+            "export_types": list(ExportType),
+            "history_count": history.count(),
         },
     )
 
@@ -83,143 +126,137 @@ async def healthz():
     return "ok"
 
 
+@app.get("/rules", response_class=HTMLResponse)
+async def rules_page(request: Request):
+    return templates.TemplateResponse(
+        "rules.html",
+        {
+            "request": request,
+            "version": __version__,
+            "rules": _rules(),
+            "rules_path": str(settings.rules_path),
+        },
+    )
+
+
 @app.post("/preview", response_class=HTMLResponse)
 async def preview(
     request: Request,
     file: UploadFile = File(...),
+    export_type: str = Form("auto"),
+    self_name: str = Form(""),
     asset_account: str = Form(""),
-    expense_account: str = Form(""),
-    revenue_account: str = Form(""),
-    currency: str = Form(""),
-    import_tag: str = Form("moneybuster"),
-    invert_sign: bool = Form(False),
+    mode: str = Form("real_payment"),
 ):
-    opts = _options_from_form(
-        asset_account, expense_account, revenue_account, currency, import_tag,
-        invert_sign,
-    )
+    content = await file.read()
+    opts = _map_options(self_name, asset_account, mode)
     try:
-        transactions = await _parse_and_transform(file, opts)
+        proposals = _build(content, file.filename or "", export_type, opts)
     except ParseError as exc:
-        return templates.TemplateResponse(
-            "result.html",
-            {"request": request, "error": str(exc), "version": __version__},
-            status_code=400,
-        )
+        return _error(request, str(exc), status=400)
+
+    orig_filename = file.filename or "upload.csv"
+    token = _save_upload(content, orig_filename)
+    importable = sum(1 for p in proposals if p.should_import)
     return templates.TemplateResponse(
         "preview.html",
         {
             "request": request,
-            "transactions": transactions,
-            "count": len(transactions),
-            "firefly_configured": settings.firefly_configured,
             "version": __version__,
+            "proposals": proposals,
+            "count": len(proposals),
+            "importable": importable,
+            "token": token,
+            "filename": orig_filename,
+            "export_type": export_type,
+            "self_name": opts.self_name,
+            "asset_account": opts.asset_account,
+            "mode": mode,
+            "firefly_configured": settings.firefly_configured,
         },
     )
 
 
-@app.post("/import")
-async def do_import(
-    request: Request,
-    file: UploadFile = File(...),
-    asset_account: str = Form(""),
-    expense_account: str = Form(""),
-    revenue_account: str = Form(""),
-    currency: str = Form(""),
-    import_tag: str = Form("moneybuster"),
-    invert_sign: bool = Form(False),
-):
-    opts = _options_from_form(
-        asset_account, expense_account, revenue_account, currency, import_tag,
-        invert_sign,
-    )
-    try:
-        transactions = await _parse_and_transform(file, opts)
-    except ParseError as exc:
-        return templates.TemplateResponse(
-            "result.html",
-            {"request": request, "error": str(exc), "version": __version__},
-            status_code=400,
-        )
+@app.post("/import", response_class=HTMLResponse)
+async def do_import(request: Request):
+    form = await request.form()
+    token = str(form.get("token", ""))
+    filename = str(form.get("filename", "")) or "upload.csv"
+    export_type = str(form.get("export_type", "auto"))
+    self_name = str(form.get("self_name", ""))
+    asset_account = str(form.get("asset_account", ""))
+    mode = str(form.get("mode", "real_payment"))
+    selected = set(form.getlist("selected"))
 
     if not settings.firefly_configured:
-        return templates.TemplateResponse(
-            "result.html",
-            {
-                "request": request,
-                "error": "Firefly III is not configured. Set FIREFLY_BASE_URL "
-                "and FIREFLY_TOKEN, or use the CSV download instead.",
-                "version": __version__,
-            },
-            status_code=400,
+        return _error(
+            request,
+            "Firefly III ist nicht konfiguriert (FIREFLY_URL / FIREFLY_TOKEN).",
+            status=400,
         )
 
     try:
-        client = FireflyClient(settings.firefly_base_url, settings.firefly_token)
-        results = await client.create_transactions(
-            transactions,
-            error_if_duplicate=settings.error_if_duplicate,
-            apply_rules=settings.apply_rules,
-        )
-    except FireflyError as exc:
-        return templates.TemplateResponse(
-            "result.html",
-            {"request": request, "error": str(exc), "version": __version__},
-            status_code=502,
-        )
+        content, _ = _read_upload(token)
+    except FileNotFoundError as exc:
+        return _error(request, str(exc), status=400)
 
-    summary = {
-        "created": sum(1 for r in results if r.status == "created"),
-        "duplicate": sum(1 for r in results if r.status == "duplicate"),
-        "error": sum(1 for r in results if r.status == "error"),
-    }
+    opts = _map_options(self_name, asset_account, mode)
+    try:
+        proposals = _build(content, filename, export_type, opts)
+    except ParseError as exc:
+        return _error(request, str(exc), status=400)
+
+    to_import = [
+        p
+        for p in proposals
+        if p.should_import and (not selected or p.external_id in selected)
+    ]
+
+    outcomes = []
+    summary = {"created": 0, "duplicate": 0, "skipped": 0, "error": 0}
+    try:
+        client = FireflyClient(settings.firefly_url, settings.token)
+        if settings.auto_create_expense_accounts:
+            for name in {p.destination_account for p in to_import}:
+                await client.ensure_expense_account(name)
+        if settings.auto_create_categories:
+            for name in {p.category for p in to_import if p.category}:
+                await client.ensure_category(name)
+
+        for proposal in to_import:
+            outcome = await client.create_transaction(
+                proposal,
+                error_if_duplicate=settings.error_if_duplicate,
+                apply_rules=settings.apply_rules,
+            )
+            if outcome.status == "created":
+                history.record(
+                    proposal.external_id,
+                    date=proposal.date,
+                    amount=str(proposal.import_amount),
+                    description=outcome.description,
+                    firefly_transaction_id=outcome.firefly_id,
+                )
+            summary[outcome.status] = summary.get(outcome.status, 0) + 1
+            outcomes.append(outcome)
+    except FireflyError as exc:
+        return _error(request, str(exc), status=502)
+
     return templates.TemplateResponse(
         "result.html",
         {
             "request": request,
-            "results": results,
-            "summary": summary,
             "version": __version__,
+            "outcomes": outcomes,
+            "summary": summary,
+            "firefly_url": settings.firefly_url,
         },
     )
 
 
-@app.post("/download/csv")
-async def download_csv(
-    file: UploadFile = File(...),
-    asset_account: str = Form(""),
-    expense_account: str = Form(""),
-    revenue_account: str = Form(""),
-    currency: str = Form(""),
-    import_tag: str = Form("moneybuster"),
-    invert_sign: bool = Form(False),
-):
-    opts = _options_from_form(
-        asset_account, expense_account, revenue_account, currency, import_tag,
-        invert_sign,
-    )
-    transactions = await _parse_and_transform(file, opts)
-    data = to_csv(transactions)
-    return Response(
-        content=data,
-        media_type="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=firefly_import.csv"
-        },
-    )
-
-
-@app.post("/download/config")
-async def download_config(
-    currency: str = Form(""),
-    import_tag: str = Form("moneybuster"),
-):
-    opts = _options_from_form("", "", "", currency, import_tag, False)
-    data = to_config(opts)
-    return Response(
-        content=data,
-        media_type="application/json",
-        headers={
-            "Content-Disposition": "attachment; filename=firefly_import.json"
-        },
+def _error(request: Request, message: str, status: int = 400):
+    return templates.TemplateResponse(
+        "result.html",
+        {"request": request, "version": __version__, "error": message},
+        status_code=status,
     )

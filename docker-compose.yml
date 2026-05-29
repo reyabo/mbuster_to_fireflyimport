@@ -1,22 +1,38 @@
 services:
-  mbuster2firefly:
+  moneybuster-converter:
     build: .
     image: mbuster-to-fireflyimport:latest
-    container_name: mbuster2firefly
+    container_name: moneybuster-converter
     restart: unless-stopped
-    # Bound to the Tailscale interface only by default. Replace 100.x.y.z with
-    # this host's Tailscale IP, or use "127.0.0.1:8080:8080" and put it behind
-    # `tailscale serve`. Do NOT publish on 0.0.0.0 to the public internet.
-    ports:
-      - "${BIND_ADDR:-127.0.0.1}:8080:8080"
-    env_file:
-      - .env
     environment:
-      # These can also live in .env; listed here for visibility.
-      FIREFLY_BASE_URL: ${FIREFLY_BASE_URL:-}
-      FIREFLY_TOKEN: ${FIREFLY_TOKEN:-}
+      TZ: Europe/Berlin
+      DATA_DIR: /data
+      # URL of the Firefly III instance. From inside the container use the
+      # host gateway (or the real https URL if reachable from the container).
+      FIREFLY_URL: ${FIREFLY_URL:-http://host.docker.internal:8081}
+      # Token is read from a file/secret, never baked into the image.
+      FIREFLY_TOKEN_FILE: /run/secrets/firefly_token
+      # Your member name in MoneyBuster/Cospend (used for share/mode logic).
+      SELF_NAME: ${SELF_NAME:-}
+      DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-EUR}
+      # Optional: let the tool create missing expense accounts / categories.
+      AUTO_CREATE_EXPENSE_ACCOUNTS: ${AUTO_CREATE_EXPENSE_ACCOUNTS:-false}
+      AUTO_CREATE_CATEGORIES: ${AUTO_CREATE_CATEGORIES:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /srv/data/moneybuster-converter:/data
+    secrets:
+      - firefly_token
+    # Reachable on the host's port 8090; put it behind Caddy + Tailscale.
+    ports:
+      - "8090:5000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz').read()==b'ok' else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/healthz').read()==b'ok' else 1)"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+secrets:
+  firefly_token:
+    file: ./secrets/firefly_token.txt

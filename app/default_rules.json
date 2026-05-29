@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "contains": ["REWE", "EDEKA", "LIDL", "ALDI", "KAUFLAND", "DM", "PENNY", "NETTO"],
+      "category": "Lebensunterhalt"
+    },
+    {
+      "contains": ["BAHN", "DB", "RNV", "VRN", "ARAL", "SHELL", "TANKSTELLE", "BUS", "UBER", "TAXI"],
+      "category": "Mobilität"
+    },
+    {
+      "contains": ["NETFLIX", "SPOTIFY", "STEAM", "KINO", "DISNEY", "RESTAURANT", "BAR", "PIZZA", "CAFE", "KAFFEE"],
+      "category": "Entertainment & Freizeit"
+    },
+    {
+      "contains": ["APOTHEKE", "ARZT", "PRAXIS", "ZAHNARZT", "KLINIK"],
+      "category": "Arztrechnungen"
+    },
+    {
+      "contains": ["SCHULE", "BUCH", "THALIA", "KLETT", "CORNELSEN", "MUSEUM"],
+      "category": "Bildungsmittel"
+    },
+    {
+      "contains": ["VERSICHERUNG", "HUK", "ALLIANZ", "AXA", "DEBEKA"],
+      "category": "Versicherungen (fix)"
+    }
+  ],
+  "default_category": "Sonstiges",
+  "default_expense_account": "MoneyBuster"
+}

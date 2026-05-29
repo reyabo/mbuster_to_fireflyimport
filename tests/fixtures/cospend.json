@@ -1,0 +1,31 @@
+{
+  "name": "Urlaub",
+  "members": [
+    {"id": 1, "name": "Oliver", "weight": 1, "activated": true},
+    {"id": 2, "name": "Anna", "weight": 1, "activated": true}
+  ],
+  "categories": [
+    {"id": 5, "name": "Restaurant"}
+  ],
+  "bills": [
+    {
+      "id": 123,
+      "what": "Restaurant",
+      "amount": 60.0,
+      "date": "2026-05-29",
+      "timestamp": 1748476800,
+      "payer_id": 1,
+      "owerIds": [1, 2],
+      "categoryid": 5
+    },
+    {
+      "id": 124,
+      "what": "Taxi",
+      "amount": 20.0,
+      "date": "2026-05-30",
+      "payer_id": 2,
+      "owers": [{"id": 1}, {"id": 2}],
+      "categoryid": 0
+    }
+  ]
+}

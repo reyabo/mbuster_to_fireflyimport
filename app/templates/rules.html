@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Kategorie-Regeln</h1>
+  <p class="muted">
+    Keyword-Regeln (case-insensitive) zur Zuordnung von Kategorie und Gegenkonto.
+    Bearbeitbar unter <code>{{ rules_path }}</code>.
+  </p>
+  <p><a class="back" href="/">&larr; Startseite</a></p>
+
+  <table>
+    <thead><tr><th>Schl&uuml;sselw&ouml;rter</th><th>Kategorie</th><th>Gegenkonto</th></tr></thead>
+    <tbody>
+      {% for r in rules.rules %}
+      <tr>
+        <td class="tags">{{ r.contains|join(", ") }}</td>
+        <td>{{ r.category or "" }}</td>
+        <td>{{ r.destination_account or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">
+    Fallback-Kategorie: <code>{{ rules.default_category }}</code> &middot;
+    Fallback-Gegenkonto: <code>{{ rules.default_expense_account }}</code>
+  </p>
+</div>
+{% endblock %}

@@ -1,33 +1,73 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h1>Vorschau</h1>
-  <p class="muted">{{ count }} Transaktion(en) erkannt. Es wurde noch nichts importiert.</p>
-  <p><a class="back" href="/">&larr; Zur&uuml;ck</a></p>
-  <div class="scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>Datum</th><th>Typ</th><th>Beschreibung</th>
-          <th class="num">Betrag</th><th>W&auml;hrung</th>
-          <th>Quelle</th><th>Ziel</th><th>Kategorie</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for tx in transactions %}
-        <tr>
-          <td>{{ tx.date }}</td>
-          <td><span class="pill {{ tx.type }}">{{ tx.type }}</span></td>
-          <td>{{ tx.description }}</td>
-          <td class="num">{{ tx.amount }}</td>
-          <td>{{ tx.currency_code }}</td>
-          <td>{{ tx.source_name }}</td>
-          <td>{{ tx.destination_name }}</td>
-          <td>{{ tx.category_name or "" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <h1>Vorschau / Dry-Run</h1>
+  <p class="muted">
+    {{ count }} Buchung(en) erkannt, {{ importable }} importierbar. Es wurde noch
+    <b>nichts</b> importiert. Haken setzen und unten best&auml;tigen.
+  </p>
+  <p><a class="back" href="/">&larr; Neue Datei</a></p>
+
+  <form method="post" action="/import">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="filename" value="{{ filename }}">
+    <input type="hidden" name="export_type" value="{{ export_type }}">
+    <input type="hidden" name="self_name" value="{{ self_name }}">
+    <input type="hidden" name="asset_account" value="{{ asset_account }}">
+    <input type="hidden" name="mode" value="{{ mode }}">
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Import</th><th>Status</th><th>Datum</th><th>Titel</th>
+            <th>Projekt</th><th>Zahler</th><th class="num">Gesamt</th>
+            <th class="num">Mein Anteil</th><th class="num">Importbetrag</th>
+            <th>Quelle</th><th>Ziel</th><th>Kategorie</th><th>Tags</th>
+            <th>Dedupe-Key</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in proposals %}
+          <tr class="status-{{ p.status.value }}">
+            <td>
+              <input type="checkbox" name="selected" value="{{ p.external_id }}"
+                     {% if p.should_import %}checked{% endif %}
+                     {% if not p.should_import %}disabled{% endif %}>
+            </td>
+            <td>
+              <span class="pill {{ p.status.value }}">{{ p.status.value }}</span>
+              {% if p.status_message %}<div class="hint">{{ p.status_message }}</div>{% endif %}
+            </td>
+            <td>{{ p.date }}</td>
+            <td>{{ p.title }}</td>
+            <td>{{ p.project }}</td>
+            <td>{{ p.payer }}</td>
+            <td class="num">{{ "%.2f"|format(p.amount_total) }}</td>
+            <td class="num">{{ "%.2f"|format(p.my_share) }}</td>
+            <td class="num"><b>{{ "%.2f"|format(p.import_amount) }}</b></td>
+            <td>{{ p.source_account }}</td>
+            <td>{{ p.destination_account }}</td>
+            <td>{{ p.category }}</td>
+            <td class="tags">{{ p.tags|join(", ") }}</td>
+            <td class="mono">{{ p.external_id }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="btns">
+      <button class="primary" type="submit"
+              {% if not firefly_configured or importable == 0 %}disabled
+              title="{% if not firefly_configured %}Firefly nicht konfiguriert{% else %}Nichts zu importieren{% endif %}"{% endif %}>
+        Ausgew&auml;hlte in Firefly III importieren
+      </button>
+      <a class="ghost btn" href="/">Abbrechen</a>
+    </div>
+    {% if not firefly_configured %}
+    <p class="muted">Import deaktiviert: Firefly III ist nicht konfiguriert.</p>
+    {% endif %}
+  </form>
 </div>
 {% endblock %}
