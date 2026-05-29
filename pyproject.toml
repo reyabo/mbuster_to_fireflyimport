@@ -10,5 +10,5 @@ license = { file = "LICENSE" }
 pythonpath = ["."]
 testpaths = ["tests"]
 
-[tool.setuptools]
-packages = ["app"]
+[tool.setuptools.packages.find]
+include = ["app*"]

@@ -1,8 +1,8 @@
 what,amount,date,timestamp,payer_name,payer_weight,payer_active,owers,repeat,categoryid,paymentmode
-"deleteMeIfYouWant",1.0,1970-01-01,666,"Oli",1.0,1,"Oli,",n,0,n
-"Kaffee",7.1,2025-06-02,1748847080,"Oli",1.0,1,"Oli,",n,75,c
-"Pizza",45.0,2025-06-02,1748881833,"Oli",1.0,1,"Oli,",n,75,c
-"schokomuseun",16.0,2025-06-03,1748946602,"Oli",1.0,1,"Oli,",n,74,n
+"deleteMeIfYouWant",1.0,1970-01-01,666,"M1",1.0,1,"M1,",n,0,n
+"Kaffee",7.1,2025-06-02,1748847080,"M1",1.0,1,"M1,",n,75,c
+"Pizza",45.0,2025-06-02,1748881833,"M1",1.0,1,"M1,",n,75,c
+"Museum",16.0,2025-06-03,1748946602,"M1",1.0,1,"M1,",n,74,n
 
 categoryname,categoryid,icon,color
 "Lebensmittel",70,"🛒","#ffaa00"

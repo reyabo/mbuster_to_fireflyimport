@@ -1,57 +1,88 @@
-"""Application configuration loaded from environment / .env file."""
+"""Application configuration.
+
+Values are read from environment variables / a local ``.env`` file. The
+Firefly token may be provided directly (``FIREFLY_TOKEN``) or, preferably, via
+a file/secret path (``FIREFLY_TOKEN_FILE``) so it never lives in the image or
+the compose file.
+"""
 
 from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Runtime settings.
-
-    All values can be set via environment variables or a `.env` file. The
-    Firefly credentials are optional at startup so the converter / preview can
-    be used without a configured Firefly instance; they are only required when
-    actually pushing transactions to the API.
-    """
-
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        env_prefix="",
-        extra="ignore",
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     # --- Firefly III connection -------------------------------------------
-    firefly_base_url: str = ""
+    firefly_url: str = ""
     firefly_token: str = ""
+    firefly_token_file: str = ""
 
-    # --- Conversion defaults ----------------------------------------------
-    # Asset account in Firefly that money is paid from / received into.
-    default_asset_account: str = "MoneyBuster"
-    # Fallback expense / revenue accounts when no better name is available.
-    default_expense_account: str = "MoneyBuster Expenses"
-    default_revenue_account: str = "MoneyBuster Income"
-    # ISO 4217 currency code used when the export does not specify one.
+    # --- Storage -----------------------------------------------------------
+    data_dir: str = "./data"
+
+    # --- Conversion defaults (overridable per upload) ---------------------
+    self_name: str = ""
     default_currency: str = "EUR"
-    # Tag attached to every imported transaction (for easy bulk removal).
     import_tag: str = "moneybuster"
+    default_expense_account: str = "MoneyBuster"
+    default_category: str = "Sonstiges"
 
-    # --- Behaviour ---------------------------------------------------------
-    # When true a positive bill amount becomes a deposit instead of a
-    # withdrawal (use if your export represents spending as positive income).
-    invert_sign: bool = False
-    # Ask Firefly to reject duplicates based on the transaction hash.
+    # --- Firefly write behaviour ------------------------------------------
+    auto_create_expense_accounts: bool = False
+    auto_create_categories: bool = False
     error_if_duplicate: bool = True
-    # Apply Firefly's rules engine to imported transactions.
     apply_rules: bool = False
 
     # --- Server ------------------------------------------------------------
     host: str = "0.0.0.0"
-    port: int = 8080
+    port: int = 5000
+
+    @property
+    def token(self) -> str:
+        """Resolve the token, preferring the secret file when configured."""
+
+        if self.firefly_token_file:
+            p = Path(self.firefly_token_file)
+            if p.is_file():
+                return p.read_text(encoding="utf-8").strip()
+        return self.firefly_token.strip()
 
     @property
     def firefly_configured(self) -> bool:
-        return bool(self.firefly_base_url and self.firefly_token)
+        return bool(self.firefly_url and self.token)
+
+    # --- Derived paths -----------------------------------------------------
+    @property
+    def data_path(self) -> Path:
+        p = Path(self.data_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def uploads_path(self) -> Path:
+        p = self.data_path / "uploads"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def history_db_path(self) -> Path:
+        return self.data_path / "import_history.sqlite"
+
+    @property
+    def rules_path(self) -> Path:
+        return self.data_path / "rules.json"
 
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

@@ -3,65 +3,69 @@
 <div class="card">
   <h1>MoneyBuster &rarr; Firefly III</h1>
   <p class="muted">
-    Lade eine MoneyBuster-/Cospend-Projekt-CSV (die <b>Rechnungsliste</b>, nicht
-    die Statistik) hoch. Die Datei wird in Firefly-III-Transaktionen umgewandelt
-    &ndash; entweder als Vorschau, als Direkt-Upload per API oder als
-    importfertige CSV.
+    Wandelt MoneyBuster-/Cospend-Exporte in Firefly-III-Transaktionen um und legt sie
+    per <b>direktem API-Aufruf</b> an. Ablauf: Upload &rarr; Vorschau (Dry-Run)
+    &rarr; expliziter Import. Es wird <b>nichts</b> ohne Best&auml;tigung importiert.
   </p>
 
-  {% if not firefly_configured %}
-  <div class="alert warn">
-    Firefly III ist noch nicht konfiguriert (<code>FIREFLY_BASE_URL</code> /
-    <code>FIREFLY_TOKEN</code>). Vorschau und CSV-Download funktionieren
-    trotzdem; der Direkt-Upload ist erst nach der Konfiguration verf&uuml;gbar.
-  </div>
+  {% if ff_info %}
+    <div class="alert ok">
+      Verbunden mit Firefly III
+      {% if ff_info.version %}v{{ ff_info.version }}{% endif %}
+      &middot; lokale Import-Historie: {{ history_count }} Eintr&auml;ge
+    </div>
+  {% elif ff_error %}
+    <div class="alert warn">
+      {{ ff_error }} &mdash; Vorschau funktioniert trotzdem, Import erst nach
+      erfolgreicher Verbindung.
+    </div>
   {% endif %}
+</div>
 
-  <form method="post" enctype="multipart/form-data">
-    <label for="file">MoneyBuster-/Cospend-Export (CSV)</label>
-    <input type="file" id="file" name="file" accept=".csv,text/csv" required>
+<div class="card">
+  <h2>Export hochladen</h2>
+  <form method="post" action="/preview" enctype="multipart/form-data">
+    <label for="file">MoneyBuster-/Cospend-Export (CSV oder JSON)</label>
+    <input type="file" id="file" name="file" accept=".csv,.json,text/csv,application/json" required>
 
     <div class="grid">
       <div>
-        <label for="asset_account">Asset-Konto (woher/wohin das Geld flie&szlig;t)</label>
+        <label for="export_type">Exporttyp</label>
+        <select id="export_type" name="export_type">
+          {% for t in export_types %}
+          <option value="{{ t.value }}" {% if t.value == 'auto' %}selected{% endif %}>{{ t.value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="self_name">Eigener Mitgliedsname (z.&nbsp;B. Oliver)</label>
+        <input type="text" id="self_name" name="self_name" value="{{ settings.self_name }}"
+               placeholder="dein Name in MoneyBuster">
+      </div>
+      <div>
+        <label for="asset_account">Firefly Asset-Konto (Quelle)</label>
+        {% if accounts %}
+        <select id="asset_account" name="asset_account">
+          {% for a in accounts %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
+        </select>
+        {% else %}
         <input type="text" id="asset_account" name="asset_account"
-               value="{{ settings.default_asset_account }}">
+               placeholder="z. B. Girokonto">
+        {% endif %}
       </div>
       <div>
-        <label for="currency">W&auml;hrung (ISO 4217)</label>
-        <input type="text" id="currency" name="currency"
-               value="{{ settings.default_currency }}">
+        <label for="mode">Importmodus</label>
+        <select id="mode" name="mode">
+          <option value="real_payment" selected>Reale Zahlung (voller Betrag)</option>
+          <option value="my_share">Nur mein Anteil</option>
+          <option value="preview_only">Nur Vorschau</option>
+        </select>
       </div>
-      <div>
-        <label for="expense_account">Standard-Ausgabenkonto</label>
-        <input type="text" id="expense_account" name="expense_account"
-               value="{{ settings.default_expense_account }}">
-      </div>
-      <div>
-        <label for="revenue_account">Standard-Einnahmenkonto</label>
-        <input type="text" id="revenue_account" name="revenue_account"
-               value="{{ settings.default_revenue_account }}">
-      </div>
-      <div>
-        <label for="import_tag">Import-Tag</label>
-        <input type="text" id="import_tag" name="import_tag"
-               value="{{ settings.import_tag }}">
-      </div>
-    </div>
-
-    <div class="row">
-      <input type="checkbox" id="invert_sign" name="invert_sign" value="true">
-      <label for="invert_sign">Vorzeichen umkehren (positiv = Einnahme)</label>
     </div>
 
     <div class="btns">
-      <button class="secondary" type="submit" formaction="/preview">Vorschau</button>
-      <button class="primary" type="submit" formaction="/import"
-              {% if not firefly_configured %}disabled title="Firefly nicht konfiguriert"{% endif %}>
-        In Firefly III importieren
-      </button>
-      <button class="ghost" type="submit" formaction="/download/csv" formnovalidate>CSV herunterladen</button>
-      <button class="ghost" type="submit" formaction="/download/config" formnovalidate>config.json herunterladen</button>
+      <button class="secondary" type="submit">Vorschau / Dry-Run</button>
+      <a class="ghost btn" href="/rules">Kategorie-Regeln</a>
     </div>
   </form>
 </div>

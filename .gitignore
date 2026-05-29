@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# mbuster_to_fireflyimport runtime
+/data/
+secrets/
+*.sqlite

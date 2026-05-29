@@ -1,60 +1,84 @@
 import functools
+from decimal import Decimal
 
 import httpx
 import pytest
 
-from app import firefly as firefly_mod
-from app.firefly import FireflyClient
-from app.models import FireflyTransaction
+from app.firefly import client as client_mod
+from app.firefly.client import FireflyClient, FireflyError
+from app.models import ImportProposal
 
 
-def _tx(desc="Test", amount="10.00"):
-    return FireflyTransaction(
-        type="withdrawal", date="2024-03-01T00:00:00", amount=amount,
-        description=desc, currency_code="EUR", source_name="A",
-        destination_name="B", external_id="mb-x",
+def _proposal(ext="moneybuster:Urlaub:1"):
+    return ImportProposal(
+        transaction_type="withdrawal", date="2026-05-29",
+        import_amount=Decimal("60.00"), description="Restaurant",
+        currency="EUR", source_account="Girokonto",
+        destination_account="MoneyBuster", category="Sonstiges",
+        tags=["moneybuster"], notes="...", external_id=ext,
     )
 
 
 @pytest.fixture
-def patched_client(monkeypatch):
-    """Patch httpx.AsyncClient so FireflyClient talks to a handler instead."""
-
+def patch_transport(monkeypatch):
     def install(handler):
         transport = httpx.MockTransport(handler)
         monkeypatch.setattr(
-            firefly_mod.httpx,
+            client_mod.httpx,
             "AsyncClient",
             functools.partial(httpx.AsyncClient, transport=transport),
         )
-
     return install
 
 
-@pytest.mark.anyio
-async def test_created_duplicate_and_error(patched_client):
-    seen = {"n": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["n"] += 1
-        if seen["n"] == 1:
-            return httpx.Response(200, json={"data": {"id": "1"}})
-        if seen["n"] == 2:
-            return httpx.Response(
-                422, json={"message": "Duplicate transaction found.",
-                           "errors": {"transactions.0.description": ["dup"]}}
-            )
-        return httpx.Response(
-            422, json={"message": "Validation failed",
-                       "errors": {"transactions.0.amount": ["bad"]}}
-        )
-
-    patched_client(handler)
-    client = FireflyClient("https://firefly.test", "token")
-    results = await client.create_transactions([_tx(), _tx(), _tx()])
-    assert [r.status for r in results] == ["created", "duplicate", "error"]
-
-
 def test_requires_credentials():
-    with pytest.raises(Exception):
+    with pytest.raises(FireflyError):
         FireflyClient("", "")
+
+
+@pytest.mark.anyio
+async def test_create_transaction_created(patch_transport):
+    def handler(request):
+        assert request.url.path == "/api/v1/transactions"
+        return httpx.Response(200, json={"data": {"id": "99"}})
+
+    patch_transport(handler)
+    out = await FireflyClient("https://ff.test", "t").create_transaction(_proposal())
+    assert out.status == "created"
+    assert out.firefly_id == "99"
+
+
+@pytest.mark.anyio
+async def test_create_transaction_duplicate(patch_transport):
+    def handler(request):
+        return httpx.Response(422, json={"message": "Duplicate of transaction #5."})
+
+    patch_transport(handler)
+    out = await FireflyClient("https://ff.test", "t").create_transaction(_proposal())
+    assert out.status == "duplicate"
+
+
+@pytest.mark.anyio
+async def test_test_connection_unauthorised(patch_transport):
+    patch_transport(lambda r: httpx.Response(401, json={"message": "no"}))
+    with pytest.raises(FireflyError):
+        await FireflyClient("https://ff.test", "t").test_connection()
+
+
+@pytest.mark.anyio
+async def test_list_account_names_paginates(patch_transport):
+    def handler(request):
+        page = int(request.url.params.get("page", "1"))
+        if page == 1:
+            return httpx.Response(200, json={
+                "data": [{"attributes": {"name": "Girokonto"}}],
+                "meta": {"pagination": {"total_pages": 2}},
+            })
+        return httpx.Response(200, json={
+            "data": [{"attributes": {"name": "Bargeld"}}],
+            "meta": {"pagination": {"total_pages": 2}},
+        })
+
+    patch_transport(handler)
+    names = await FireflyClient("https://ff.test", "t").list_account_names("asset")
+    assert names == ["Girokonto", "Bargeld"]
