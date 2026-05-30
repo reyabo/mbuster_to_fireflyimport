@@ -59,7 +59,9 @@ def main(argv: list[str] | None = None) -> int:
 
     opts = MapOptions(
         self_name=args.self_name,
-        asset_account=settings.default_expense_account,
+        asset_account="",
+        default_asset_account=settings.default_asset_account,
+        payment_mode_map=settings.payment_mode_map,
         mode=ImportMode(args.mode),
         import_tag=settings.import_tag,
     )
@@ -91,7 +93,8 @@ def main(argv: list[str] | None = None) -> int:
             f"total={_fmt_amount(p.amount_total, args.reveal)} "
             f"mine={_fmt_amount(p.my_share, args.reveal)} "
             f"import={_fmt_amount(p.import_amount, args.reveal)} "
-            f"cat={p.category} type={p.transaction_type}"
+            f"pm={p.payment_mode or '-'} src={p.source_account or '-'} "
+            f"({p.source_origin or '-'}) cat={p.category} type={p.transaction_type}"
         )
 
     print("\nKein Firefly-Import durchgeführt (Diagnose-Modus).")

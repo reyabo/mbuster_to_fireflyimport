@@ -24,11 +24,34 @@ from ..rules import RuleSet
 @dataclass
 class MapOptions:
     self_name: str
-    asset_account: str
+    asset_account: str = ""            # form-chosen asset account (priority b)
+    default_asset_account: str = ""    # configured default (priority c)
+    payment_mode_map: dict[str, str] = field(default_factory=dict)  # priority a
     mode: ImportMode = ImportMode.real_payment
     import_tag: str = "moneybuster"
     source_label: str = "moneybuster"  # external_id prefix
     known_ids: set[str] = field(default_factory=set)
+
+
+def resolve_source_account(bill: Bill, opts: MapOptions) -> tuple[str, str]:
+    """Determine the Firefly source (asset) account for a bill.
+
+    Priority: (a) payment-mode mapping, (b) form-chosen asset account,
+    (c) configured default asset account, (d) none. Returns
+    ``(account, origin_description)``; ``account`` is empty when no source
+    can be determined.
+    """
+
+    pm = (bill.payment_mode or "").strip()
+    if pm:
+        mapped = opts.payment_mode_map.get(pm.casefold())
+        if mapped:
+            return mapped, f"aus Zahlungstyp: {mapped}"
+    if opts.asset_account:
+        return opts.asset_account, "Fallback aus Formular"
+    if opts.default_asset_account:
+        return opts.default_asset_account, "Fallback: DEFAULT_ASSET_ACCOUNT"
+    return "", ""
 
 
 def external_id(bill: Bill, source_label: str) -> str:
@@ -86,6 +109,7 @@ def build_proposal(bill: Bill, opts: MapOptions, rules: RuleSet) -> ImportPropos
 
     category = rules.category_for(bill.title, bill.project, hint=bill.category_hint)
     destination = rules.destination_for(bill.title, bill.payer)
+    source_account, source_origin = resolve_source_account(bill, opts)
 
     proposal = ImportProposal(
         date=bill.date,
@@ -95,7 +119,9 @@ def build_proposal(bill: Bill, opts: MapOptions, rules: RuleSet) -> ImportPropos
         amount_total=money(bill.amount_total),
         my_share=money(my_share),
         currency=bill.currency,
-        source_account=opts.asset_account,
+        source_account=source_account,
+        source_origin=source_origin,
+        payment_mode=bill.payment_mode or "",
         destination_account=destination,
         category=category,
         description=bill.title or category,
@@ -157,6 +183,18 @@ def build_proposal(bill: Bill, opts: MapOptions, rules: RuleSet) -> ImportPropos
         proposal.should_import = False
         proposal.status = ImportStatus.probably_imported
         proposal.status_message = "Bereits importiert (lokale Import-Historie)."
+
+    # --- source account required ------------------------------------------
+    # A row that would otherwise be imported but has no resolvable source
+    # account cannot be sent to Firefly. Rows already blocked for another
+    # reason keep their (more specific) status.
+    if not proposal.source_account and proposal.should_import:
+        proposal.should_import = False
+        proposal.status = ImportStatus.no_source_account
+        proposal.status_message = (
+            "Kein Quellkonto ermittelbar. Zahlungstyp nicht gemappt und kein "
+            "Asset-Konto gewählt."
+        )
 
     return proposal
 

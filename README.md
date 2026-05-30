@@ -155,6 +155,33 @@ Zugriff anschließend nur intern bzw. über Tailscale:
 > Bitte die **Projekt-/Rechnungsliste** exportieren – das Tool erkennt den
 > Statistik-Export und weist mit einer klaren Meldung darauf hin.
 
+### Zahlungstyp → Asset-Konto (Quellkonto)
+
+MoneyBuster/Cospend speichert je Buchung einen **Zahlungstyp** (`payment_mode`).
+Über `PAYMENT_MODE_ACCOUNT_MAP` (JSON-String) wird daraus das Firefly-**Asset-
+Konto** als Quelle der Ausgabe abgeleitet:
+
+```json
+{
+  "cash": "Bargeld", "bar": "Bargeld", "bargeld": "Bargeld",
+  "card": "Girokonto", "karte": "Girokonto", "ec": "Girokonto",
+  "creditcard": "Kreditkarte", "kreditkarte": "Kreditkarte",
+  "bank": "Girokonto", "überweisung": "Girokonto", "transfer": "Girokonto"
+}
+```
+
+* Schlüssel sind **case-insensitive**, Whitespace wird getrimmt, Umlaute bleiben
+  erhalten; unbekannte/ungültige Werte werden ignoriert.
+* **Priorität für das Quellkonto:** (a) Zahlungstyp-Mapping → (b) im Formular
+  gewähltes Asset-Konto → (c) `DEFAULT_ASSET_ACCOUNT` → (d) sonst **kein
+  Import** (Zeile als `no_source_account` markiert).
+* Die Preview zeigt den Zahlungstyp und woher das Quellkonto stammt
+  (z. B. „aus Zahlungstyp: Bargeld" bzw. „Fallback aus Formular").
+
+> Hinweis: Der **CSV**-Export nutzt kurze Codes für `paymentmode`
+> (z. B. `c`, `n`, `b`, `t`). Diese Codes als Schlüssel ins Mapping aufnehmen,
+> z. B. `{"c": "Kreditkarte", "n": "Bargeld"}`.
+
 ### Kategorie-Regeln
 
 Beim ersten Start wird `<DATA_DIR>/rules.json` aus den mitgelieferten
@@ -189,6 +216,7 @@ Duplikaterkennung (`error_if_duplicate_hash`) sowie die `external_id`.
 | `SELF_NAME` | eigener MoneyBuster/Cospend-Name | – |
 | `DEFAULT_CURRENCY` | Währung (ISO 4217) | `EUR` |
 | `DEFAULT_ASSET_ACCOUNT` | Standard-Asset-Konto (Quelle/Ziel), wenn keins gewählt | – |
+| `PAYMENT_MODE_ACCOUNT_MAP` | JSON: Zahlungstyp → Firefly-Asset-Konto (siehe unten) | `{}` |
 | `IMPORT_TAG` | Tag an jeder Transaktion | `moneybuster` |
 | `DEFAULT_EXPENSE_ACCOUNT` | Fallback-Gegenkonto | `MoneyBuster` |
 | `DEFAULT_CATEGORY` | Fallback-Kategorie | `Sonstiges` |

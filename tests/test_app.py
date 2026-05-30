@@ -42,3 +42,23 @@ def test_missing_asset_account_blocks_import(monkeypatch):
     )
     assert r2.status_code == 400
     assert "Asset-Konto" in r2.text
+
+
+def test_preview_shows_payment_mode_and_mapped_source(monkeypatch):
+    monkeypatch.setattr(m.settings, "payment_mode_account_map",
+                        '{"cash": "Bargeld", "card": "Girokonto"}')
+    csv = (
+        b"what,amount,date,payer_name,owers,paymentmode\n"
+        b'"Kaffee",3.50,2025-06-01,"M1","M1,",cash\n'
+    )
+    c = TestClient(app)
+    r = c.post(
+        "/preview",
+        files={"file": ("p.csv", csv, "text/csv")},
+        data={"export_type": "auto", "self_name": "M1",
+              "asset_account": "", "mode": "real_payment"},
+    )
+    assert r.status_code == 200
+    assert "aus Zahlungstyp: Bargeld" in r.text   # source origin hint
+    assert "Bargeld" in r.text                      # mapped source account
+    assert "cash" in r.text                         # payment-mode column
