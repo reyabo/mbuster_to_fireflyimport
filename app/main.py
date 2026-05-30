@@ -74,12 +74,14 @@ def _read_upload(token: str) -> tuple[bytes, str]:
 
 
 def _map_options(self_name: str, asset_account: str, mode: str) -> MapOptions:
-    # The asset account is the user's own source/destination account. It must
-    # NEVER fall back to the expense account; use the configured default asset
-    # account (which may be empty -> surfaced as a warning in the preview).
+    # The source account is the user's own asset account. It is resolved per
+    # bill: payment-mode mapping first, then the form-chosen account, then the
+    # configured default. It must NEVER fall back to the expense account.
     return MapOptions(
         self_name=self_name.strip() or settings.self_name,
-        asset_account=asset_account.strip() or settings.default_asset_account,
+        asset_account=asset_account.strip(),
+        default_asset_account=settings.default_asset_account,
+        payment_mode_map=settings.payment_mode_map,
         mode=ImportMode(mode),
         import_tag=settings.import_tag,
     )
@@ -173,7 +175,8 @@ async def preview(
             "proposals": proposals,
             "warnings": result.warnings,
             "equal_shares_note": result.fmt == "csv",
-            "asset_missing": not opts.asset_account,
+            "asset_missing": not opts.asset_account and not opts.default_asset_account,
+            "payment_map_active": bool(opts.payment_mode_map),
             "count": len(proposals),
             "importable": importable,
             "token": token,
@@ -211,15 +214,6 @@ async def do_import(request: Request):
         return _error(request, str(exc), status=400)
 
     opts = _map_options(self_name, asset_account, mode)
-    if not opts.asset_account:
-        return _error(
-            request,
-            "Kein Asset-Konto angegeben. Die Quelle einer Firefly-Ausgabe muss "
-            "ein Asset-Konto sein (z. B. dein Girokonto) – bitte oben ein Konto "
-            "wählen. Es wurde nichts importiert.",
-            status=400,
-        )
-
     try:
         proposals, _result = _build(content, filename, export_type, opts)
     except ParseError as exc:
@@ -230,6 +224,24 @@ async def do_import(request: Request):
         for p in proposals
         if p.should_import and (not selected or p.external_id in selected)
     ]
+
+    # A Firefly withdrawal must have an asset account as its source. If nothing
+    # is importable because no source account could be determined, surface a
+    # clear validation error instead of silently doing nothing.
+    if not to_import and any(
+        p.status == ImportStatus.no_source_account for p in proposals
+    ):
+        return _error(
+            request,
+            "Kein Asset-Konto ermittelbar. Für die Buchungen konnte kein "
+            "Quellkonto bestimmt werden – bitte oben ein Asset-Konto wählen "
+            "oder PAYMENT_MODE_ACCOUNT_MAP konfigurieren. Es wurde nichts "
+            "importiert.",
+            status=400,
+        )
+
+    # Never send a transaction without a source account.
+    to_import = [p for p in to_import if p.source_account]
 
     outcomes = []
     summary = {"created": 0, "duplicate": 0, "skipped": 0, "error": 0}

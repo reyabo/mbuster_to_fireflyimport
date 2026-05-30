@@ -34,6 +34,7 @@ class ImportStatus(str, Enum):
     skipped = "skipped"
     other_payer = "other_payer"
     negative_amount = "negative_amount"
+    no_source_account = "no_source_account"
     error = "error"
 
 
@@ -86,6 +87,8 @@ class ImportProposal(BaseModel):
     currency: str = "EUR"
 
     source_account: str = ""
+    source_origin: str = ""  # how source_account was determined (for the UI)
+    payment_mode: str = ""   # original MoneyBuster/Cospend payment mode
     destination_account: str = ""
     category: str = ""
     description: str = ""

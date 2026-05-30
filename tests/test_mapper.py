@@ -5,7 +5,8 @@ from app.models import Bill, ImportMode, ImportStatus, Participant
 from app.rules import RuleSet, Rule
 
 
-def _bill(payer="Oliver", total="60.00", bill_id="123", owers=("Oliver", "Anna")):
+def _bill(payer="Oliver", total="60.00", bill_id="123", owers=("Oliver", "Anna"),
+          payment_mode=None):
     n = len(owers)
     share = (Decimal(total) / n).quantize(Decimal("0.01"))
     return Bill(
@@ -17,6 +18,7 @@ def _bill(payer="Oliver", total="60.00", bill_id="123", owers=("Oliver", "Anna")
         amount_total=Decimal(total),
         currency="EUR",
         participants=[Participant(name=o, share=share) for o in owers],
+        payment_mode=payment_mode,
     )
 
 
@@ -101,6 +103,62 @@ def test_negative_amount_not_imported_even_in_my_share_mode():
     p = build_proposal(_bill(total="-50.00"), _opts(mode=ImportMode.my_share), RULES)
     assert p.should_import is False
     assert p.status == ImportStatus.negative_amount
+
+
+PM_MAP = {
+    "cash": "Bargeld", "bar": "Bargeld", "bargeld": "Bargeld",
+    "card": "Girokonto", "karte": "Girokonto", "ec": "Girokonto",
+    "creditcard": "Kreditkarte", "kreditkarte": "Kreditkarte",
+    "überweisung": "Girokonto",
+}
+
+
+def test_payment_mode_cash_maps_to_bargeld():
+    p = build_proposal(_bill(payment_mode="cash"),
+                       _opts(asset_account="Girokonto", payment_mode_map=PM_MAP), RULES)
+    assert p.source_account == "Bargeld"
+    assert p.source_origin == "aus Zahlungstyp: Bargeld"
+    assert p.payment_mode == "cash"
+    assert p.should_import is True
+
+
+def test_payment_mode_is_case_insensitive_and_umlaut_safe():
+    p = build_proposal(_bill(payment_mode="KrEdItKaRtE"),
+                       _opts(payment_mode_map=PM_MAP), RULES)
+    assert p.source_account == "Kreditkarte"
+    u = build_proposal(_bill(payment_mode="Überweisung"),
+                       _opts(payment_mode_map=PM_MAP), RULES)
+    assert u.source_account == "Girokonto"
+
+
+def test_unknown_payment_mode_falls_back_to_form_account():
+    p = build_proposal(_bill(payment_mode="weird"),
+                       _opts(asset_account="Girokonto", payment_mode_map=PM_MAP), RULES)
+    assert p.source_account == "Girokonto"
+    assert p.source_origin == "Fallback aus Formular"
+
+
+def test_unknown_payment_mode_falls_back_to_default_account():
+    p = build_proposal(
+        _bill(payment_mode="weird"),
+        _opts(asset_account="", default_asset_account="Standardkonto",
+              payment_mode_map=PM_MAP),
+        RULES,
+    )
+    assert p.source_account == "Standardkonto"
+    assert "DEFAULT_ASSET_ACCOUNT" in p.source_origin
+
+
+def test_no_source_without_mapping_form_or_default_blocks_import():
+    p = build_proposal(
+        _bill(payment_mode="weird"),
+        _opts(asset_account="", default_asset_account="", payment_mode_map=PM_MAP),
+        RULES,
+    )
+    assert p.source_account == ""
+    assert p.should_import is False
+    assert p.status == ImportStatus.no_source_account
+    assert "Kein Quellkonto" in p.status_message
 
 
 def test_notes_contain_split_information():

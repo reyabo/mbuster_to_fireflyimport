@@ -8,6 +8,7 @@ the compose file.
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
 
@@ -34,6 +35,9 @@ class Settings(BaseSettings):
     default_asset_account: str = ""
     default_expense_account: str = "MoneyBuster"
     default_category: str = "Sonstiges"
+    # JSON string mapping MoneyBuster/Cospend payment modes -> Firefly asset
+    # accounts, e.g. '{"cash": "Bargeld", "card": "Girokonto"}'.
+    payment_mode_account_map: str = ""
 
     # --- Firefly write behaviour ------------------------------------------
     auto_create_expense_accounts: bool = False
@@ -58,6 +62,29 @@ class Settings(BaseSettings):
     @property
     def firefly_configured(self) -> bool:
         return bool(self.firefly_url and self.token)
+
+    @property
+    def payment_mode_map(self) -> dict[str, str]:
+        """Parsed payment-mode -> asset-account map with normalised keys.
+
+        Keys are trimmed and case-folded (umlaut-safe); empty/invalid input
+        yields an empty map. Entries with an empty account value are dropped.
+        """
+
+        raw = self.payment_mode_account_map.strip()
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {
+            str(k).strip().casefold(): str(v).strip()
+            for k, v in data.items()
+            if str(v).strip()
+        }
 
     # --- Derived paths -----------------------------------------------------
     @property
